@@ -1,5 +1,6 @@
 import Navbar from "@/src/components/layout/Navbar";
 import ToolCard from "@/src/components/ui/ToolCard";
+import CesiumGlobe from "@/src/components/map/CesiumGlobe";
 
 const tools = [
   {
@@ -74,6 +75,30 @@ export default function Home() {
             >
               Start Exploring
             </a>
+          </div>
+        </section>
+
+        {/* Cesium Preview */}
+        <section className="bg-gray-950 px-6 py-16">
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-8">
+              <p className="text-sm font-semibold uppercase tracking-wider text-[#00c4a1]">
+                3D GIS Engine
+              </p>
+
+              <h2 className="mt-2 text-3xl font-bold text-white">
+                Explore the world in 3D
+              </h2>
+
+              <p className="mt-3 max-w-2xl text-gray-400">
+                Powered by CesiumJS, GIS Playground uses a 3D globe as
+                the foundation for its geospatial experiments.
+              </p>
+            </div>
+
+            <div className="h-[500px] overflow-hidden rounded-2xl border border-gray-800">
+              <CesiumGlobe />
+            </div>
           </div>
         </section>
 
