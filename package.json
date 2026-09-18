@@ -1,6 +1,9 @@
 {
   "name": "gis-playground",
   "version": "0.1.0",
+  "overrides": {
+    "@spz-loader/core": "0.3.0"
+  },
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
