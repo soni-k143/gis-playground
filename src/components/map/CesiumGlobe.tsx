@@ -9,12 +9,15 @@ export default function CesiumGlobe() {
     let viewer: import("cesium").Viewer | undefined;
 
     const initializeCesium = async () => {
-      window.CESIUM_BASE_URL = "/_next/static/cesium/";
+      window.CESIUM_BASE_URL = "/cesium/";
 
       const Cesium = await import("cesium");
 
-      Cesium.Ion.defaultAccessToken =
-        process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN ?? "";
+      const token = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
+
+      console.log("Cesium token exists:", !!token);
+
+      Cesium.Ion.defaultAccessToken = token ?? "";
 
       if (!containerRef.current) {
         return;
@@ -29,7 +32,14 @@ export default function CesiumGlobe() {
         sceneModePicker: false,
         navigationHelpButton: false,
         fullscreenButton: false,
+
+        requestRenderMode: true,
+        maximumRenderTimeChange: Infinity,
       });
+
+      // viewerRef.current = viewer;
+
+      viewer.scene.requestRender();
 
       viewer.camera.setView({
         destination: Cesium.Cartesian3.fromDegrees(
@@ -40,7 +50,10 @@ export default function CesiumGlobe() {
       });
     };
 
-    initializeCesium();
+    initializeCesium().catch((error) => {
+      console.error("Cesium initialization failed:", error);
+      console.error("Cesium error details:", JSON.stringify(error, null, 2));
+    });
 
     return () => {
       viewer?.destroy();
