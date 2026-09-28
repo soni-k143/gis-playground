@@ -2,14 +2,15 @@
 
 import { useCesiumViewer } from "@/src/hooks/Usecesiumviewer";
 import { useDrawing } from "@/src/hooks/useDrawing";
-import { useGeometryStore, type GeometryType } from "@/src/store/useGeometryStore";
-import { TOOL_LABELS } from "@/src/lib/geometryBuilder";
+import { useUnsavedChangesWarning } from "@/src/hooks/useUnsavedChangesWarning";
+import { TOOL_LABELS, type GeometryType } from "@/src/lib/geometryBuilder";
 
 export default function GeometryPlayground() {
   const { containerRef, viewerRef, cesiumRef, ready } = useCesiumViewer();
-  const features = useGeometryStore((s) => s.features);
-  const { activeTool, statusMessage, startTool, cancelDrawing, clearAll, removeFeature } =
+  const { features, activeTool, statusMessage, startTool, cancelDrawing, clearAll, removeFeature } =
     useDrawing(viewerRef, cesiumRef);
+
+  useUnsavedChangesWarning(features.length > 0);
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-gray-950">

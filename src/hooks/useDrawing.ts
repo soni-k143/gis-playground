@@ -2,31 +2,36 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import * as turf from "@turf/turf";
-import { useGeometryStore, type GeometryType, type StoredFeature } from "@/src/store/useGeometryStore";
-import { buildGeometryFeature, MIN_POINTS, TOOL_LABELS } from "@/src/lib/geometryBuilder";
+import { buildGeometryFeature, MIN_POINTS, TOOL_LABELS, type GeometryType } from "@/src/lib/geometryBuilder";
 
 const ACCENT = "#00c4a1";
 
+export interface DrawnFeature {
+  id: string;
+  type: GeometryType;
+  controlPoints: [number, number][];
+  valid: boolean;
+  errors: string[];
+  measurement?: string;
+}
+
 export interface UseDrawingResult {
+  features: DrawnFeature[];
   activeTool: GeometryType | null;
   statusMessage: string;
-  /** Begins drawing a new geometry of this type. Any drawing already in
-   *  progress is discarded. */
   startTool: (tool: GeometryType) => void;
-  /** Abandons the geometry currently being drawn, if any. */
   cancelDrawing: () => void;
-  /** Removes every stored feature and its Cesium entity. */
   clearAll: () => void;
-  /** Removes one stored feature (and its entity) by id. */
   removeFeature: (id: string) => void;
 }
 
 /**
- * Owns the full "click on the globe to build a geometry" workflow: live
- * preview while drawing, finishing on the right gesture per geometry type,
- * validating and persisting the result to useGeometryStore, and rendering it
- * as a Cesium entity. Reusable by any tool page that wants to let the user
- * draw a new geometry — not just Geometry Playground.
+ * Owns the full "click on the globe to build a geometry" workflow for one
+ * page: live preview while drawing, finishing on the right gesture per
+ * geometry type, validating via buildGeometryFeature, and rendering/removing
+ * Cesium entities directly. Everything lives in local component state —
+ * nothing is persisted outside this hook, so navigating away and back
+ * resets it, by design.
  *
  * Pass the viewer/Cesium refs from useCesiumViewer(); this hook doesn't
  * bootstrap a viewer itself; it draws into whichever one you already have.
@@ -35,28 +40,23 @@ export function useDrawing(
   viewerRef: RefObject<import("cesium").Viewer | null>,
   cesiumRef: RefObject<typeof import("cesium") | null>
 ): UseDrawingResult {
-  const addFeature = useGeometryStore((s) => s.addFeature);
-  const removeFeatureFromStore = useGeometryStore((s) => s.removeFeature);
-  const clearFeatures = useGeometryStore((s) => s.clearFeatures);
-
-  const handlerRef = useRef<import("cesium").ScreenSpaceEventHandler | null>(null);
-  const mousePositionRef = useRef<import("cesium").Cartesian3 | null>(null);
-  const previewEntityRef = useRef<import("cesium").Entity | null>(null);
-
+  const [features, setFeatures] = useState<DrawnFeature[]>([]);
   const [activeTool, setActiveTool] = useState<GeometryType | null>(null);
   const [drawingPoints, setDrawingPoints] = useState<
     import("cesium").Cartesian3[]
   >([]);
   const [statusMessage, setStatusMessage] = useState<string>("");
 
+  const idCounterRef = useRef(0);
+  const handlerRef = useRef<import("cesium").ScreenSpaceEventHandler | null>(null);
+  const mousePositionRef = useRef<import("cesium").Cartesian3 | null>(null);
+  const previewEntityRef = useRef<import("cesium").Entity | null>(null);
+
   const drawingPointsRef = useRef(drawingPoints);
   drawingPointsRef.current = drawingPoints;
   const activeToolRef = useRef(activeTool);
   activeToolRef.current = activeTool;
 
-  // Clean up the drawing handler / preview entity this hook owns if the
-  // consuming component unmounts mid-draw. The viewer itself is someone
-  // else's responsibility (useCesiumViewer).
   useEffect(() => {
     return () => {
       handlerRef.current?.destroy();
@@ -65,7 +65,6 @@ export function useDrawing(
     };
   }, []);
 
-  // ---------- Cesium <-> lon/lat boundary ----------
   const cartesianToLonLat = useCallback(
     (c: import("cesium").Cartesian3): [number, number] => {
       const Cesium = cesiumRef.current!;
@@ -78,9 +77,6 @@ export function useDrawing(
     [cesiumRef]
   );
 
-  // Used only for the live circle preview while drawing (still driven by
-  // Cesium positions for efficiency). The finished circle's radius is
-  // recomputed via turf.distance from the stored [lon, lat] points instead.
   const geodesicDistance = useCallback(
     (a: import("cesium").Cartesian3, b: import("cesium").Cartesian3) => {
       const Cesium = cesiumRef.current!;
@@ -93,12 +89,12 @@ export function useDrawing(
   );
 
   // Adds exactly one feature's entity, tagged with its id so it can be
-  // removed individually. Never do a full removeAll()+rebuild on every
-  // change: ground-clamped polylines use GroundPolylinePrimitive, which
-  // rebatches asynchronously, so tearing one down and recreating it (even
-  // unchanged) produces a visible blink while it rebuilds.
+  // removed individually. Never a full removeAll()+rebuild on every change:
+  // ground-clamped polylines use GroundPolylinePrimitive, which rebatches
+  // asynchronously, so tearing one down and recreating it (even unchanged)
+  // produces a visible blink while it rebuilds.
   const addFeatureEntity = useCallback(
-    (f: Pick<StoredFeature, "id" | "type" | "controlPoints" | "valid">) => {
+    (f: DrawnFeature) => {
       const viewer = viewerRef.current;
       const Cesium = cesiumRef.current;
       if (!viewer || !Cesium) return;
@@ -207,21 +203,18 @@ export function useDrawing(
       const built = buildGeometryFeature(tool, controlPoints);
       if (built.controlPoints.length === 0) return;
 
-      const id = addFeature({
+      idCounterRef.current += 1;
+      const feature: DrawnFeature = {
+        id: `${tool}-${idCounterRef.current}`,
         type: tool,
         controlPoints: built.controlPoints,
-        geojson: built.geojson,
         valid: built.valid,
         errors: built.errors,
         measurement: built.measurement,
-      });
+      };
 
-      addFeatureEntity({
-        id,
-        type: tool,
-        controlPoints: built.controlPoints,
-        valid: built.valid,
-      });
+      setFeatures((prev) => [...prev, feature]);
+      addFeatureEntity(feature);
 
       setStatusMessage(
         built.valid
@@ -236,7 +229,7 @@ export function useDrawing(
       removePreviewEntity();
       mousePositionRef.current = null;
     },
-    [cartesianToLonLat, addFeature, addFeatureEntity, removePreviewEntity]
+    [cartesianToLonLat, addFeatureEntity, removePreviewEntity]
   );
 
   const startTool = useCallback(
@@ -388,19 +381,19 @@ export function useDrawing(
 
   const clearAll = useCallback(() => {
     const viewer = viewerRef.current;
-    clearFeatures();
+    setFeatures([]);
     viewer?.entities.removeAll();
     viewer?.scene.requestRender();
     setStatusMessage("");
-  }, [viewerRef, clearFeatures]);
+  }, [viewerRef]);
 
   const removeFeature = useCallback(
     (id: string) => {
-      removeFeatureFromStore(id);
+      setFeatures((prev) => prev.filter((f) => f.id !== id));
       removeFeatureEntity(id);
     },
-    [removeFeatureFromStore, removeFeatureEntity]
+    [removeFeatureEntity]
   );
 
-  return { activeTool, statusMessage, startTool, cancelDrawing, clearAll, removeFeature };
+  return { features, activeTool, statusMessage, startTool, cancelDrawing, clearAll, removeFeature };
 }

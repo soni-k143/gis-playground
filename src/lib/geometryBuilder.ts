@@ -1,6 +1,7 @@
 import * as turf from "@turf/turf";
 import type { Feature } from "geojson";
-import type { GeometryType } from "@/src/store/useGeometryStore";
+
+export type GeometryType = "point" | "polyline" | "polygon" | "circle" | "rectangle";
 
 export const TOOL_LABELS: Record<GeometryType, string> = {
   point: "Point",
@@ -56,7 +57,7 @@ export function buildGeometryFeature(
   const controlPoints = dedupe(rawControlPoints);
   const errors: string[] = [];
   let measurement: string | undefined;
-  let geojson: Feature | any;
+  let geojson: Feature | any; 
 
   if (controlPoints.length < MIN_POINTS[type]) {
     errors.push(
